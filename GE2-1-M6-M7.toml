@@ -1,0 +1,15 @@
+# Config File to Store CAEN Information
+[CAEN_INFO]
+Name = "GE21_M6+M7"
+System_Type = "SY5527"
+Slot = 3
+
+[Link]
+link_type1 = "TCPIP"
+IP_Address = "192.168.0.1"
+username = "admin"
+password = "admin"
+
+[Detector_Info]
+isTGEM = true
+Layer = 1

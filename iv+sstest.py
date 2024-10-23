@@ -1,0 +1,250 @@
+#################################################################################################################################
+# This Script is Meant to be Run the QC6 subtest(s) of the IV Scan and Short Stability Test and records results to a .txt file  #
+#################################################################################################################################
+
+import os
+import sys
+import tomli #Import Library to read TOML file
+import argparse
+import math
+import numpy as np
+from time import sleep,time
+from termcolor import colored
+from datetime import datetime
+from pprint import pprint
+from pycaenhv.wrappers import init_system, deinit_system, get_board_parameters, get_channel_parameters, get_channel_parameter, set_channel_parameter, exec_command, get_crate_map
+from pycaenhv.enums import CAENHV_SYSTEM_TYPE, LinkType
+from checkconnections import connect, load_toml, shutdown #load_toml imports CAEN Information and creates a handle using a TOML Configuration File
+from stresstest import pwroff
+
+# Global Varible Trips
+trips = 0
+
+# Formatting of filing for both tests, results from both stored in a .txt file
+def format(data,Voltages):
+	
+	dt = datetime.now()
+	str_date = dt.strftime("%Y-%m-%d_%H-%M")
+	
+	os.makedirs("Results", exist_ok = True)
+	os.chdir("Results")
+	
+	os.makedirs(data["CAEN_INFO"]["Name"],exist_ok = True)
+	os.chdir(data["CAEN_INFO"]["Name"])
+	
+	os.makedirs("IV_Scan",exist_ok = True)
+	os.chdir("IV_Scan")
+	
+	os.chdir("../../..")
+	
+	path_iv = "Results/" + data["CAEN_INFO"]["Name"] + "/IV_Scan/iv_scan_" + str_date + ".txt"
+	string1 = ""
+	for row in Voltages:
+		string1 += ("CH%sVoltage,CH%sCurrent," % (str(row[0]),str(row[0])))
+	string1 = string1[:-1]	
+	file = open(path_iv, "w")
+	file.write(string1 + "\n")
+	file.close
+	
+	os.chdir("Results")
+	os.chdir(data["CAEN_INFO"]["Name"])
+	
+	os.makedirs("Short-Stability-test", exist_ok = True)
+	os.chdir("Short-Stability-test")
+	
+	os.chdir("../../..")
+	
+	path_ss = "Results/" + data["CAEN_INFO"]["Name"] + "/Short-Stability-test/sstest_" + str_date + ".txt"
+	file = open(path_ss, "w")
+	dt = datetime.now()
+	str_date = dt.strftime("%Y-%m-%d_%H-%M")
+	file.write("Started at " + str_date + "\n")
+	file.write("Channels, Timestamp\n")
+	file.close
+				
+	return path_iv, path_ss
+
+
+# Check trips function - note different from the one used in the stress test
+def checktrips(handle,data,Voltages,path_ss,tripmax):
+	global trips
+	string2 = ""
+	for row in Voltages:
+		if get_channel_parameter(handle,data["CAEN_INFO"]["Slot"], row[0],"Pw") == 0:
+			string2 += str(row[0]) + ","
+	if string2 == "":
+		return True
+	else:
+		trips += 1
+		dt = datetime.now()
+		str_date = dt.strftime("%Y-%m-%d_%H-%M")
+		string2 += str_date
+		with open(path_ss, "a") as file:
+			file.write(string2 + "\n")
+			file.close()
+		print("Trip on Channels:" + string2)
+		exec_command(handle,"ClearAlarm")
+		if trips <= tripmax:
+			print("Waiting 60 seconds")
+			sleep(60)
+			for row in Voltages:
+				set_channel_parameter(handle,data["CAEN_INFO"]["Slot"], row[0],"Pw",1)
+				sleep(0.1)
+			rup = 1 
+			while rup == 1:
+				rup = 0
+				for row in Voltages:
+					if get_channel_parameter(handle,data["CAEN_INFO"]["Slot"], row[0],"Status") == "rup":
+						rup = 1
+					temp = checktrips(handle,data,Voltages,path_ss,tripmax)
+					sleep(0.1)
+		print("\nResuming Test\n")
+		return False
+		
+	
+# Function to record voltage and current at each step on each channel
+def record(handle,data,path_iv,Voltages):
+	string3 = ""
+	for row in Voltages:
+		current = get_channel_parameter(handle,data["CAEN_INFO"]["Slot"],row[0], "IMon")
+		voltage = get_channel_parameter(handle,data["CAEN_INFO"]["Slot"],row[0], "VMon")
+		string3 += ("%f,%f," % (voltage,current))
+	string3 = string3[:-1]	
+	file = open(path_iv, "a")
+	file.write(string3 + "\n")
+	file.close()
+	
+# When ran functions completes both IVScan and SS test
+def ivscan(handle,data,vstart,vstep,vmax,itrip,tripmax,stabletime,endholdtime,endfoilvoltage):
+	global trips
+	Voltages = []
+	channels = []
+	resistances = [1.125, 0.560, 0.438, 0.550, 0.875, 0.525, 0.625] # Equivalent Resistance in Mega Ohms 
+	if data["Detector_Info"]["isTGEM"] == True: # This Area of the code takes in information from the Configuration file
+		if data["Detector_Info"]["Layer"] == 1:
+			channels = [6, 5, 4, 3, 2, 1, 0]
+		elif data["Detector_Info"]["Layer"] == 2:
+			channels = [13, 12, 11, 10, 9, 8, 7]
+		else: 
+			print(colored("Layer must be 1 or 2", "yellow"),end = "")
+			shutdown(handle)
+		# Section Creates a Table of Voltages for Each Channel according to the resistances given	
+		for chan in channels:
+			Voltages.append([chan])
+		for v in range (vstart,vmax,vstep):
+			Ieq = v / (4.698) 
+			for i in range(7):
+				Volt = Ieq*resistances[i]
+				if Volt >= get_channel_parameter(handle,data["CAEN_INFO"]["Slot"],Voltages[i][0], "SVMax"):
+					Volt = get_channel_parameter(handle,data["CAEN_INFO"]["Slot"],Voltages[i][0], "SVMax")
+				Voltages[i].append(Volt)
+		Ieq = vmax / 4.698
+		for i in range(7):
+			Volt = Ieq*resistances[i]
+			if Volt >= get_channel_parameter(handle,data["CAEN_INFO"]["Slot"],Voltages[i][0], "SVMax"):
+				Volt = get_channel_parameter(handle,data["CAEN_INFO"]["Slot"],Voltages[i][0], "SVMax")
+			Voltages[i].append(Volt)
+		for i in range(7):
+			if Voltages[i][0] in [5,3,1,12,10,8]:
+				Voltages[i].append(endfoilvoltage)
+			else:
+				Voltages[i].append(Voltages[i][-1])
+	
+	
+	
+	path_iv, path_ss = format(data,Voltages)
+	
+	# Powers on all channels in whatever layer you're using
+	for row in Voltages:
+		set_channel_parameter(handle,data["CAEN_INFO"]["Slot"],row[0],"Pw",1)
+		sleep(0.1)
+	
+	# Set Voltage to first value in list
+	step = 1
+	while step < len(Voltages[0])-1 and trips <= tripmax:
+		vchamber = 0
+		for row in Voltages:
+			set_channel_parameter(handle,data["CAEN_INFO"]["Slot"],row[0],"V0Set", row[step])
+			sleep(0.1)
+			vchamber += row[step]
+		print("Setting Voltage to %f" % (vchamber))
+		# Cycling through the rest of the voltage values and recording at each stepp
+		rup = 1 
+		while rup == 1 and trips <= tripmax:
+			rup = 0
+			for row in Voltages:
+				if get_channel_parameter(handle,data["CAEN_INFO"]["Slot"], row[0],"Status") == "rup":
+					rup = 1
+				temp = checktrips(handle,data,Voltages,path_ss,tripmax)
+				if trips >= tripmax:
+					return False
+				sleep(0.1)
+
+		start = time()
+		while int(time() - start) < stabletime and trips <= tripmax:
+			for row in Voltages:
+				if checktrips(handle,data,Voltages,path_ss,tripmax) == False:
+					start = time()	
+					if trips >= tripmax:
+						return False
+				sleep(0.1)
+
+		record(handle,data,path_iv,Voltages)					 
+		step += 1
+		
+	# Start of SS Test
+	for row in Voltages:
+		set_channel_parameter(handle,data["CAEN_INFO"]["Slot"],row[0],"V0Set",row[step])
+		sleep(0.1)
+	print("Starting Short Stabilty Test")
+	start = time()
+	while int(time() - start) < endholdtime*3600 and trips <= tripmax:
+		for row in Voltages:
+			if checktrips(handle,data,Voltages,path_ss,tripmax) == False:
+				sleep(0.1)
+				if trips >= tripmax:
+					return False
+			
+	# Powering off all channels
+	for row in Voltages:
+		set_channel_parameter(handle,data["CAEN_INFO"]["Slot"],row[0],"Pw",0)
+		sleep(0.1)
+	dt = datetime.now()
+	str_date = dt.strftime("%Y-%m-%d_%H-%M")
+	file = open(path_ss,"a")
+	file.write("Test finished at" + str_date)
+	file.close()
+	return True
+			
+
+if __name__ == '__main__':
+	#Parsing Arguments
+	parser = argparse.ArgumentParser(description = "Script to Run the IVScan + SS Test")
+	parser.add_argument("-c", "--config", action = "store", dest = "config", help = "config = Name of config file")
+	parser.add_argument("-s", "--vstart", action = "store", dest = "vstart", default = 200, help = "Starting voltage value across all of the dividers, default is 200V")
+	parser.add_argument("-m", "--vmax" , action = "store", dest = "vmax" , default = 4600, help = "Max voltage value across all channels, default is 4600V")
+	parser.add_argument("-t", "--vstep", action = "store", dest = "vstep" , default = 200, help = "Voltage step size, default is 200V")
+	parser.add_argument("-b", "--stabletime", action = "store", dest = "stabletime", default = 40, help = "stabilizationtime = time to hold at each step, default value is 40 seconds")
+	parser.add_argument("-i", "--itrip", action = "store", dest = "itrip", default = 2, help = "itrip = max current allowed before it's considered a trip, default is 2uA")
+	parser.add_argument("-x", "--tripmax", action = "store", dest = "tripmax", default = 3, help = "tripmax = maximum number of trips allowed for sstest, default is 3 before the test stops")
+	parser.add_argument("-e", "--endholdtime", action = "store", dest = "endholdtime", default = 2, help = "endholdtime = hold time after reaching the max voltage on the foil, default value is two hours")
+	parser.add_argument("-f", "--endfoilvoltage", action = "store", dest = "endfoilvoltage", default = 550, help = "endfoilvoltage = voltage to be put across top foils during ss test, default is 550V")
+	args = parser.parse_args()
+	
+	data,handle = connect(args.config)
+	
+	
+	try:
+		Status = ivscan(handle,data, int(args.vstart), int(args.vstep), int(args.vmax),int(args.itrip),int(args.tripmax),float(args.stabletime),float(args.endholdtime),float(args.endfoilvoltage))
+		if Status == False:
+			print(colored("Test Failed: Max number of trips exceeded","red"))
+			pwroff(data,handle)
+		else:
+			print(colored("Test is Finished","green"))
+	except KeyboardInterrupt:
+		print(colored("KeyboardInterrupt Encountered","red"))
+		print()
+		pwroff(data,handle)
+		
+		
+	shutdown(handle)

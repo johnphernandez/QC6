@@ -6,9 +6,9 @@ Slot = 3
 
 [Link]
 link_type1 = "TCPIP"
-IP_Address = "192.168.0.1"
-username = "admin"
-password = "admin"
+IP_Address = "192.XXX.XXX.XXX"
+username = "username"
+password = "password"
 
 [Detector_Info]
 isTGEM = true

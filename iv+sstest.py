@@ -49,12 +49,12 @@ def format(data,Voltages):
 	os.chdir("Results")
 	os.chdir(data["CAEN_INFO"]["Name"])
 	
-	os.makedirs("Short-Stability-test", exist_ok = True)
-	os.chdir("Short-Stability-test")
+	os.makedirs("SS_test", exist_ok = True)
+	os.chdir("SS_test")
 	
 	os.chdir("../../..")
 	
-	path_ss = "Results/" + data["CAEN_INFO"]["Name"] + "/Short-Stability-test/sstest_" + str_date + ".txt"
+	path_ss = "Results/" + data["CAEN_INFO"]["Name"] + "/SS_test/sstest_" + str_date + ".txt"
 	file = open(path_ss, "w")
 	dt = datetime.now()
 	str_date = dt.strftime("%Y-%m-%d_%H-%M")

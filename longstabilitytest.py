@@ -212,7 +212,14 @@ if __name__ == '__main__':
 	except KeyboardInterrupt:
 		print(colored("KeyboardInterrupt Encountered","red"))
 		print()
-		pwroff(data,handle)
-		
+        if args.off == "": 
+            print(colored("Power off all channels?","yellow"))
+            args.off = input()
+        if args.off in ['y','Y','yes',"Yes"]:
+            print(colored("Powering off all channels","yellow"))
+		    pwroff(data,handle)
+        else:
+            print(colored("Channels may still be powered on, check before working on any hardware!","yellow"))
+
 		
 	shutdown(handle)

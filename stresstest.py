@@ -22,9 +22,18 @@ trip_count = 0
 i = 0
 
 def pwroff(data,handle):
-	print(colored("Powering Off all Channels","yellow"))
-	print()
-	for c in range(get_crate_map(handle)["channels"][data["CAEN_INFO"]["Slot"]]):
+    if data["CAEN_INFO"]["System_Type"] in ["SY5527","SY4527"]:
+        if data["Detector_Info"]["Layer"] == 1:
+            chans = [6,5,4,3,2,1,0]
+        elif data["Detector_Info"]["Layer"] == 2:
+            chans = [13,12,11,10,9,8,7]
+        else:
+            print("Unknown Layer Number, powering off all channels")
+            chans = list(range(get_crate_map(handle)["channels"][data["CAEN_INFO"]["Slot"]]))
+    else:
+        chans = list(range(get_crate_map(handle)["channels"][data["CAEN_INFO"]["Slot"]]))    #This needs to be tested with other CAEN power supplies
+
+	for c in chans:
 		set_channel_parameter(handle,data["CAEN_INFO"]["Slot"],c, "Pw", 0)
 		sleep(0.1)
 
@@ -64,7 +73,7 @@ def check_trips(handle,slot,channel,path,tripmax):
 		if trip_count > tripmax: #If the trip count reaches the max number of trips allowed we must reduce the voltage
 			exec_command(handle,"ClearAlarm")
 			return
-		i -= 21
+		i -= 21      # This equates to dropping 200V when testing TGEM detectors in QC6
 		if i < 1:
 			i = 1 #Can't have a negative voltage, if voltage reduced below zero we set i = 1
 
@@ -164,6 +173,7 @@ if __name__ == '__main__':
 	parser.add_argument("-x", "--tripmax", action = "store", dest = "tripmax", default = 5, help = "tripmax = maximum number of trips allowed, default is 5 before the test stops")
 	parser.add_argument("-l", "--holdtime", action = "store", dest = "holdtime", default = 5, help = "hold time = time to hold at each step, default value is 5 seconds")
 	parser.add_argument("-e", "--endholdtime", action = "store", dest = "endholdtime", default = 60, help = "endholdtime = hold time after reaching the max voltage on the foil, default value is 60 seconds")
+    parser.add_argument("-o", "--off", action="store", dest = "off", default="", help = "off = Power off all channels during a keyboard interrupt if 'yes'")
 	args = parser.parse_args()
 	
 	data,handle = connect(args.config)
@@ -181,7 +191,15 @@ if __name__ == '__main__':
 	except KeyboardInterrupt:
 		print(colored("KeyboardInterrupt Encountered","red"))
 		print()
-		pwroff(data,handle)
+        if args.off == "": 
+            print(colored("Power off all channels?","yellow"))
+            args.off = input()
+        if args.off in ['y','Y','yes',"Yes"]:
+            print(colored("Powering off all channels","yellow"))
+		    pwroff(data,handle)
+        else:
+            print(colored("Channels may still be powered on, check before working on any hardware!","yellow"))
+
 		
 		
 	shutdown(handle)

@@ -1,4 +1,3 @@
-#python3 Plotting/stresstestplot.py -f=Results/GE21_M6+M7/Stress_Test/stress_2024-11-01_14-40.txt
 import matplotlib.pyplot as plt
 import mplhep as hep
 import pathlib
@@ -11,7 +10,7 @@ from datetime import datetime
 
 hep.style.use("ROOT")
 
-def sstest(file):
+def plot(file, long):
 
 	f = open(file)
 	df = f.read()
@@ -49,7 +48,7 @@ def sstest(file):
 			time.append(timeelapsed)
 			trips.append(totaltrips)
 		elif "Test" in line:
-			line = line.replace("Test finished at","")
+			line = line.replace("Test finished at ","")
 			currenttime = datetime.strptime(line,"%Y-%m-%d_%H-%M")
 			timeelapsed = (currenttime.day - timestart.day)*24 + (currenttime.hour - timestart.hour) + (currenttime.minute - timestart.minute) / 60
 			time.append(timeelapsed)
@@ -60,7 +59,10 @@ def sstest(file):
 	ax.plot(time,trips,marker = "o")
 	ax.set_xlabel("Time [h]")
 	ax.set_ylabel("Trips")
-	ax.set_title(detector_name + " Short Stability Test")
+	if long:
+		ax.set_title(detector_name + " Long Stability Test")
+	else:
+		ax.set_title(detector_name + " Short Stability Test")
 	fig.savefig(results + "/" + path.stem + ".png")
 	
 			
@@ -71,6 +73,7 @@ if __name__ == '__main__':
 	
 	parser = argparse.ArgumentParser(description = "Script to plot ss Test")
 	parser.add_argument("-f", "--file", action = "store", dest = "file", help = "file = File to be plotted")
+	parser.add_argument("-l", "--long", action = "store_true", dest = "long", default = False, help = "Long = Flag to change title to 'Long Stability Test'")
 	#parser.add_argument("-t", "--tgem", action = "store", dest = "tgem", default = True, help = "Prints channel names with triple gem"
 	args = parser.parse_args()
 	
@@ -78,4 +81,4 @@ if __name__ == '__main__':
 	if args.file == None:
 		print("Need file name")
 		sys.exit()
-	sstest(args.file)
+	plot(args.file, args.long)

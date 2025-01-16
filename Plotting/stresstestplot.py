@@ -10,7 +10,9 @@ import sys
 
 hep.style.use("ROOT")
 
-def stress(file):
+def stress(file, gem):
+
+    gems = {5:"GEM 1",3:"GEM 2",1:"GEM 3"}
     
     df =  df = read_csv(file, delimiter=",", names=["date", "Chan", "V"],skiprows = 1)
 
@@ -44,9 +46,15 @@ def stress(file):
             data[df["Chan"][i]]["trip"].append(1)
     
     fig, ax = plt.subplots(figsize=(10, 8), constrained_layout=False)
-    pprint(data)
-    for c in chan:
-        ax.plot(data[c]["trip"], data[c]["volt"], marker = "o",label = "Channel %s" % c)
+    
+    if gem:
+        for c in chan:
+            if c > 6:
+                c = c-7
+            ax.plot(data[c]["trip"], data[c]["volt"], marker = "o",label = gems[c])
+    else:
+        for c in chan:
+            ax.plot(data[c]["trip"], data[c]["volt"], marker = "o",label = "Channel %s" % c)
     
         
     ax.set_xlabel("Trip Iteration")
@@ -61,11 +69,12 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description = "Script to Run the LS Test")
     parser.add_argument("-f", "--file", action = "store", dest = "file", help = "file = File to be plotted")
+    parser.add_argument("-g", "--gem", action = "store", dest = "gem", default = True, help = "Converts to gem terminology, Channel 6 -> Drift")
     args = parser.parse_args()
     
     if args.file == None:
         print("Need file name")
         sys.exit()
-    stress(args.file)
+    stress(args.file, args.gem)
         
 

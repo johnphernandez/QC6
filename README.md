@@ -13,7 +13,7 @@ QC6
 ├── iv+sstest.py			: Performs an IV Scan during ramp up, then does a short stability test
 ├── longstabilitytest.py	: Monitor trips over a long period of time
 ├── Config
-│   └── Example.toml		: Example Config file for these tests
+│   	└── Example.toml		: Example Config file for these tests
 └── Plotting
 	├── stresstestplot.py	: Plots the resolts of the Stress test
 	├── ivplot.py			: Plots Current vs. Voltage for every channel
